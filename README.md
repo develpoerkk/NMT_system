@@ -1,3 +1,2 @@
-# CS224N_NMT
-
-Get Ready for online train.
+# NMT Assignment
+Note: Heavily inspired by the https://github.com/pcyin/pytorch_nmt repository
