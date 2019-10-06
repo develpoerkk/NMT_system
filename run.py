@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-CS224N 2018-19: Homework 4
+CS224N 2018-19: Homework 5
 run.py: Run Script for Simple NMT Model
 Pencheng Yin <pcyin@cs.cmu.edu>
 Sahil Chopra <schopra8@stanford.edu>
@@ -39,6 +39,7 @@ Options:
     --valid-niter=<int>                     perform validation after how many iterations [default: 2000]
     --dropout=<float>                       dropout [default: 0.3]
     --max-decoding-time-step=<int>          maximum number of decoding time steps [default: 70]
+    --no-char-decoder                       do not use the character decoder
 """
 import math
 import sys
@@ -116,6 +117,7 @@ def train(args: Dict):
     dev_data = list(zip(dev_data_src, dev_data_tgt))
 
     train_batch_size = int(args['--batch-size'])
+
     clip_grad = float(args['--clip-grad'])
     valid_niter = int(args['--valid-niter'])
     log_every = int(args['--log-every'])
@@ -126,7 +128,7 @@ def train(args: Dict):
     model = NMT(embed_size=int(args['--embed-size']),
                 hidden_size=int(args['--hidden-size']),
                 dropout_rate=float(args['--dropout']),
-                vocab=vocab)
+                vocab=vocab, no_char_decoder=args['--no-char-decoder'])
     model.train()
 
     uniform_init = float(args['--uniform-init'])
@@ -253,9 +255,9 @@ def train(args: Dict):
                         # reset patience
                         patience = 0
 
-                if epoch == int(args['--max-epoch']):
-                    print('reached maximum number of epochs!', file=sys.stderr)
-                    exit(0)
+            if epoch == int(args['--max-epoch']):
+                print('reached maximum number of epochs!', file=sys.stderr)
+                return 0
 
 
 def decode(args: Dict[str, str]):
@@ -272,7 +274,7 @@ def decode(args: Dict[str, str]):
         test_data_tgt = read_corpus(args['TEST_TARGET_FILE'], source='tgt')
 
     print("load model from {}".format(args['MODEL_PATH']), file=sys.stderr)
-    model = NMT.load(args['MODEL_PATH'])
+    model = NMT.load(args['MODEL_PATH'], no_char_decoder=args['--no-char-decoder'])
 
     if args['--cuda']:
         model = model.to(torch.device("cuda:0"))

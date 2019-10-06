@@ -2,30 +2,33 @@
 # -*- coding: utf-8 -*-
 
 """
-CS224N 2018-19: Homework 4
-sanity_check.py: sanity checks for assignment 4
-Sahil Chopra <schopra8@stanford.edu>
-Michael Hahn <>
-
+CS224N 2018-19: Homework 5
+sanity_check.py: sanity checks for assignment 5
 Usage:
-    sanity_check.py 1d
     sanity_check.py 1e
     sanity_check.py 1f
-
+    sanity_check.py 1j
+    sanity_check.py 2a
+    sanity_check.py 2b
+    sanity_check.py 2c
+    sanity_check.py 2d
+    sanity_check.py 1h
 """
+import json
 import math
-import sys
 import pickle
+import sys
 import time
-
+import highway
 import numpy as np
 
 from docopt import docopt
 from typing import List, Tuple, Dict, Set, Union
 from tqdm import tqdm
-from utils import read_corpus, batch_iter
+from utils import pad_sents_char, read_corpus, batch_iter
 from vocab import Vocab, VocabEntry
 
+from char_decoder import CharDecoder
 from nmt_model import NMT
 
 
@@ -41,151 +44,152 @@ EMBED_SIZE = 3
 HIDDEN_SIZE = 3
 DROPOUT_RATE = 0.0
 
-def reinitialize_layers(model):
-    """ Reinitialize the Layer Weights for Sanity Checks.
-    """
-    def init_weights(m):
-        if type(m) == nn.Linear:
-            m.weight.data.fill_(0.3)
-            if m.bias is not None:
-                m.bias.data.fill_(0.1)
-        elif type(m) == nn.Embedding:
-            m.weight.data.fill_(0.15)
-        elif type(m) == nn.Dropout:
-            nn.Dropout(DROPOUT_RATE)
-    with torch.no_grad():
-        model.apply(init_weights)
 
+class DummyVocab():
+    def __init__(self):
+        self.char2id = json.load(open('./sanity_check_en_es_data/char_vocab_sanity_check.json', 'r'))
+        self.id2char = {id: char for char, id in self.char2id.items()}
+        self.char_unk = self.char2id['<unk>']
+        self.start_of_word = self.char2id["{"]
+        self.end_of_word = self.char2id["}"]
 
-def generate_outputs(model, source, target, vocab):
-    """ Generate outputs.
+def question_1e_sanity_check():
+    """ Sanity check for words2charindices function.
     """
     print ("-"*80)
-    print("Generating Comparison Outputs")
-    reinitialize_layers(model)
+    print("Running Sanity Check for Question 1e: words2charindices()")
+    print ("-"*80)
+    vocab = VocabEntry()
 
-    # Compute sentence lengths
-    source_lengths = [len(s) for s in source]
+    print('Running test on small list of sentences')
+    sentences = [["a", "b", "c?"], ["~d~", "c", "b", "a"]]
+    small_ind = vocab.words2charindices(sentences)
+    small_ind_gold = [[[1, 30, 2], [1, 31, 2], [1, 32, 70, 2]], [[1, 85, 33, 85, 2], [1, 32, 2], [1, 31, 2], [1, 30, 2]]]
+    assert(small_ind == small_ind_gold), \
+        "small test resulted in indices list {:}, expected {:}".format(small_ind, small_ind_gold)
 
-    # Convert list of lists into tensors
-    source_padded = model.vocab.src.to_input_tensor(source, device=model.device)
-    target_padded = model.vocab.tgt.to_input_tensor(target, device=model.device)
+    print('Running test on large list of sentences')
+    tgt_sents = [['<s>', "Let's", 'start', 'by', 'thinking', 'about', 'the', 'member', 'countries', 'of', 'the', 'OECD,', 'or', 'the', 'Organization', 'of', 'Economic', 'Cooperation', 'and', 'Development.', '</s>'], ['<s>', 'In', 'the', 'case', 'of', 'gun', 'control,', 'we', 'really', 'underestimated', 'our', 'opponents.', '</s>'], ['<s>', 'Let', 'me', 'share', 'with', 'those', 'of', 'you', 'here', 'in', 'the', 'first', 'row.', '</s>'], ['<s>', 'It', 'suggests', 'that', 'we', 'care', 'about', 'the', 'fight,', 'about', 'the', 'challenge.', '</s>'], ['<s>', 'A', 'lot', 'of', 'numbers', 'there.', 'A', 'lot', 'of', 'numbers.', '</s>']]
+    tgt_ind = vocab.words2charindices(tgt_sents)
+    tgt_ind_gold = pickle.load(open('./sanity_check_en_es_data/1e_tgt.pkl', 'rb'))
+    assert(tgt_ind == tgt_ind_gold), "target vocab test resulted in indices list {:}, expected {:}".format(tgt_ind, tgt_ind_gold)
 
-    # Run the model forward
-    with torch.no_grad():
-        enc_hiddens, dec_init_state = model.encode(source_padded, source_lengths)
-        enc_masks = model.generate_sent_masks(enc_hiddens, source_lengths)
-        combined_outputs = model.decode(enc_hiddens, enc_masks, dec_init_state, target_padded)
-
-    # Save Tensors to disk
-    torch.save(enc_hiddens, './sanity_check_en_es_data/enc_hiddens.pkl')
-    torch.save(dec_init_state, './sanity_check_en_es_data/dec_init_state.pkl') 
-    torch.save(enc_masks, './sanity_check_en_es_data/enc_masks.pkl')
-    torch.save(combined_outputs, './sanity_check_en_es_data/combined_outputs.pkl')
-
-
-def question_1d_sanity_check(model, src_sents, tgt_sents, vocab):
-    """ Sanity check for question 1d. 
-        Compares student output to that of model with dummy data.
-    """
-    print("Running Sanity Check for Question 1d: Encode")
+    print("All Sanity Checks Passed for Question 1e: words2charindices()!")
     print ("-"*80)
 
-    # Configure for Testing
-    reinitialize_layers(model)
-    source_lengths = [len(s) for s in src_sents]
-    source_padded = model.vocab.src.to_input_tensor(src_sents, device=model.device)
-
-    # Load Outputs
-    enc_hiddens_target = torch.load('./sanity_check_en_es_data/enc_hiddens.pkl')
-    dec_init_state_target = torch.load('./sanity_check_en_es_data/dec_init_state.pkl')
-
-    # Test
-    with torch.no_grad():
-        enc_hiddens_pred, dec_init_state_pred = model.encode(source_padded, source_lengths)
-    assert(np.allclose(enc_hiddens_target.numpy(), enc_hiddens_pred.numpy())), "enc_hiddens is incorrect: it should be:\n {} but is:\n{}".format(enc_hiddens_target, enc_hiddens_pred)
-    print("enc_hiddens Sanity Checks Passed!")
-    assert(np.allclose(dec_init_state_target[0].numpy(), dec_init_state_pred[0].numpy())), "dec_init_state[0] is incorrect: it should be:\n {} but is:\n{}".format(dec_init_state_target[0], dec_init_state_pred[0])
-    print("dec_init_state[0] Sanity Checks Passed!")
-    assert(np.allclose(dec_init_state_target[1].numpy(), dec_init_state_pred[1].numpy())), "dec_init_state[1] is incorrect: it should be:\n {} but is:\n{}".format(dec_init_state_target[1], dec_init_state_pred[1])
-    print("dec_init_state[1] Sanity Checks Passed!")
-    print ("-"*80)
-    print("All Sanity Checks Passed for Question 1d: Encode!")
-    print ("-"*80)
-
-
-def question_1e_sanity_check(model, src_sents, tgt_sents, vocab):
-    """ Sanity check for question 1e. 
-        Compares student output to that of model with dummy data.
+def question_1f_sanity_check():
+    """ Sanity check for pad_sents_char() function.
     """
     print ("-"*80)
-    print("Running Sanity Check for Question 1e: Decode")
+    print("Running Sanity Check for Question 1f: Padding")
     print ("-"*80)
+    vocab = VocabEntry()
 
-    # Load Inputs
-    dec_init_state = torch.load('./sanity_check_en_es_data/dec_init_state.pkl')
-    enc_hiddens = torch.load('./sanity_check_en_es_data/enc_hiddens.pkl')
-    enc_masks = torch.load('./sanity_check_en_es_data/enc_masks.pkl')
-    target_padded = torch.load('./sanity_check_en_es_data/target_padded.pkl')
+    print("Running test on a list of sentences")
+    sentences = [['Human:', 'What', 'do', 'we', 'want?'], ['Computer:', 'Natural', 'language', 'processing!'], ['Human:', 'When', 'do', 'we', 'want', 'it?'], ['Computer:', 'When', 'do', 'we', 'want', 'what?']]
+    word_ids = vocab.words2charindices(sentences)
 
-    # Load Outputs
-    combined_outputs_target = torch.load('./sanity_check_en_es_data/combined_outputs.pkl')
+    padded_sentences = pad_sents_char(word_ids, 0)
+    gold_padded_sentences = torch.load('./sanity_check_en_es_data/gold_padded_sentences.pkl')
+    assert padded_sentences == gold_padded_sentences, "Sentence padding is incorrect: it should be:\n {} but is:\n{}".format(gold_padded_sentences, padded_sentences)
 
-    # Configure for Testing
-    reinitialize_layers(model)
-    COUNTER = [0]
-    def stepFunction(Ybar_t, dec_state, enc_hiddens, enc_hiddens_proj, enc_masks):
-       dec_state = torch.load('./sanity_check_en_es_data/step_dec_state_{}.pkl'.format(COUNTER[0]))
-       o_t = torch.load('./sanity_check_en_es_data/step_o_t_{}.pkl'.format(COUNTER[0]))
-       COUNTER[0]+=1
-       return dec_state, o_t, None
-    model.step = stepFunction
+    print("Sanity Check Passed for Question 1f: Padding!")
+    print("-"*80)
 
-    # Run Tests
-    with torch.no_grad():
-        combined_outputs_pred = model.decode(enc_hiddens, enc_masks, dec_init_state, target_padded)
-    assert(np.allclose(combined_outputs_pred.numpy(), combined_outputs_target.numpy())), "combined_outputs is incorrect: it should be:\n {} but is:\n{}".format(combined_outputs_target, combined_outputs_pred)
-    print("combined_outputs Sanity Checks Passed!")
-    print ("-"*80)
-    print("All Sanity Checks Passed for Question 1e: Decode!")
-    print ("-"*80)
+def question_1h_sanity_check():
+    uut=highway.Highway(EMBED_SIZE,HIDDEN_SIZE)
+    x=torch.from_numpy(np.array([[1.,2.,3.]],dtype=float))
+    W_proj=torch.from_numpy(np.array([[ 1,  1, 1], [ 1,  1,  -1],[ 1,  2, -3]],dtype=float))
+    B_proj=torch.from_numpy(np.array([ 0.5, 0.5, 0.5],dtype=float))
+    W_gate=torch.from_numpy(np.array([[ 1,  1, 1], [ 1,  1,  -1],[ 1,  2, -3]],dtype=float))
+    B_gate=torch.from_numpy(np.array([1, -1, 2],dtype=float))
+    uut.W_gate.weight=torch.nn.Parameter(W_gate)
+    uut.W_proj.weight= torch.nn.Parameter(W_proj)
+    uut.W_proj.bias=torch.nn.Parameter(B_proj)
+    uut.W_gate.bias=torch.nn.Parameter(B_gate)
+    result=uut(x)
+    print(result)
 
-def question_1f_sanity_check(model, src_sents, tgt_sents, vocab):
-    """ Sanity check for question 1f. 
-        Compares student output to that of model with dummy data.
+def question_1j_sanity_check(model):
+	""" Sanity check for model_embeddings.py
+		basic shape check
+	"""
+	print ("-"*80)
+	print("Running Sanity Check for Question 1j: Model Embedding")
+	print ("-"*80)
+	sentence_length = 10
+	max_word_length = 21
+	inpt = torch.zeros(sentence_length, BATCH_SIZE, max_word_length, dtype=torch.long)
+	ME_source = model.model_embeddings_source
+	output = ME_source.forward(inpt)
+	output_expected_size = [sentence_length, BATCH_SIZE, EMBED_SIZE]
+	assert(list(output.size()) == output_expected_size), "output shape is incorrect: it should be:\n {} but is:\n{}".format(output_expected_size, list(output.size()))
+	print("Sanity Check Passed for Question 1j: Model Embedding!")
+	print("-"*80)
+
+def question_2a_sanity_check(decoder, char_vocab):
+    """ Sanity check for CharDecoder.__init__()
+        basic shape check
     """
     print ("-"*80)
-    print("Running Sanity Check for Question 1f: Step")
+    print("Running Sanity Check for Question 2a: CharDecoder.__init__()")
     print ("-"*80)
-    reinitialize_layers(model)
+    assert(decoder.charDecoder.input_size == EMBED_SIZE), "Input dimension is incorrect:\n it should be {} but is: {}".format(EMBED_SIZE, decoder.charDecoder.input_size)
+    assert(decoder.charDecoder.hidden_size == HIDDEN_SIZE), "Hidden dimension is incorrect:\n it should be {} but is: {}".format(HIDDEN_SIZE, decoder.charDecoder.hidden_size)
+    assert(decoder.char_output_projection.in_features == HIDDEN_SIZE), "Input dimension is incorrect:\n it should be {} but is: {}".format(HIDDEN_SIZE, decoder.char_output_projection.in_features)
+    assert(decoder.char_output_projection.out_features == len(char_vocab.char2id)), "Output dimension is incorrect:\n it should be {} but is: {}".format(len(char_vocab.char2id), decoder.char_output_projection.out_features)
+    assert(decoder.decoderCharEmb.num_embeddings == len(char_vocab.char2id)), "Number of embeddings is incorrect:\n it should be {} but is: {}".format(len(char_vocab.char2id), decoder.decoderCharEmb.num_embeddings)
+    assert(decoder.decoderCharEmb.embedding_dim == EMBED_SIZE), "Embedding dimension is incorrect:\n it should be {} but is: {}".format(EMBED_SIZE, decoder.decoderCharEmb.embedding_dim)
+    print("Sanity Check Passed for Question 2a: CharDecoder.__init__()!")
+    print("-"*80)
 
-    # Inputs
-    Ybar_t = torch.load('./sanity_check_en_es_data/Ybar_t.pkl')
-    dec_init_state = torch.load('./sanity_check_en_es_data/dec_init_state.pkl')
-    enc_hiddens = torch.load('./sanity_check_en_es_data/enc_hiddens.pkl')
-    enc_masks = torch.load('./sanity_check_en_es_data/enc_masks.pkl')
-    enc_hiddens_proj = torch.load('./sanity_check_en_es_data/enc_hiddens_proj.pkl')
-
-    # Output
-    dec_state_target = torch.load('./sanity_check_en_es_data/dec_state.pkl')
-    o_t_target = torch.load('./sanity_check_en_es_data/o_t.pkl')
-    e_t_target = torch.load('./sanity_check_en_es_data/e_t.pkl')
-
-    # Run Tests
-    with torch.no_grad():
-        dec_state_pred, o_t_pred, e_t_pred= model.step(Ybar_t, dec_init_state, enc_hiddens, enc_hiddens_proj, enc_masks)
-    assert(np.allclose(dec_state_target[0].numpy(), dec_state_pred[0].numpy())), "decoder_state[0] is incorrect: it should be:\n {} but is:\n{}".format(dec_state_target[0], dec_state_pred[0])
-    print("dec_state[0] Sanity Checks Passed!")
-    assert(np.allclose(dec_state_target[1].numpy(), dec_state_pred[1].numpy())), "decoder_state[1] is incorrect: it should be:\n {} but is:\n{}".format(dec_state_target[1], dec_state_pred[1])
-    print("dec_state[1] Sanity Checks Passed!")
-    assert(np.allclose(o_t_target.numpy(), o_t_pred.numpy())), "combined_output is incorrect: it should be:\n {} but is:\n{}".format(o_t_target, o_t_pred)
-    print("combined_output  Sanity Checks Passed!")
-    assert(np.allclose(e_t_target.numpy(), e_t_pred.numpy())), "e_t is incorrect: it should be:\n {} but is:\n{}".format(e_t_target, e_t_pred)
-    print("e_t Sanity Checks Passed!")
-    print ("-"*80)    
-    print("All Sanity Checks Passed for Question 1f: Step!")
+def question_2b_sanity_check(decoder, char_vocab):
+    """ Sanity check for CharDecoder.forward()
+        basic shape check
+    """
     print ("-"*80)
+    print("Running Sanity Check for Question 2b: CharDecoder.forward()")
+    print ("-"*80)
+    sequence_length = 4
+    inpt = torch.zeros(sequence_length, BATCH_SIZE, dtype=torch.long)
+    logits, (dec_hidden1, dec_hidden2) = decoder.forward(inpt)
+    logits_expected_size = [sequence_length, BATCH_SIZE, len(char_vocab.char2id)]
+    dec_hidden_expected_size = [1, BATCH_SIZE, HIDDEN_SIZE]
+    assert(list(logits.size()) == logits_expected_size), "Logits shape is incorrect:\n it should be {} but is:\n{}".format(logits_expected_size, list(logits.size()))
+    assert(list(dec_hidden1.size()) == dec_hidden_expected_size), "Decoder hidden state shape is incorrect:\n it should be {} but is: {}".format(dec_hidden_expected_size, list(dec_hidden1.size()))
+    assert(list(dec_hidden2.size()) == dec_hidden_expected_size), "Decoder hidden state shape is incorrect:\n it should be {} but is: {}".format(dec_hidden_expected_size, list(dec_hidden2.size()))
+    print("Sanity Check Passed for Question 2b: CharDecoder.forward()!")
+    print("-"*80)
 
+def question_2c_sanity_check(decoder):
+    """ Sanity check for CharDecoder.train_forward()
+        basic shape check
+    """
+    print ("-"*80)
+    print("Running Sanity Check for Question 2c: CharDecoder.train_forward()")
+    print ("-"*80)
+    sequence_length = 4
+    inpt = torch.zeros(sequence_length, BATCH_SIZE, dtype=torch.long)
+    loss = decoder.train_forward(inpt)
+    assert(list(loss.size()) == []), "Loss should be a scalar but its shape is: {}".format(list(loss.size()))
+    print("Sanity Check Passed for Question 2c: CharDecoder.train_forward()!")
+    print("-"*80)
+
+def question_2d_sanity_check(decoder):
+    """ Sanity check for CharDecoder.decode_greedy()
+        basic shape check
+    """
+    print ("-"*80)
+    print("Running Sanity Check for Question 2d: CharDecoder.decode_greedy()")
+    print ("-"*80)
+    sequence_length = 4
+    inpt = torch.zeros(1, BATCH_SIZE, HIDDEN_SIZE, dtype=torch.float)
+    initialStates = (inpt, inpt)
+    device = decoder.char_output_projection.weight.device
+    decodedWords = decoder.decode_greedy(initialStates, device)
+    assert(len(decodedWords) == BATCH_SIZE), "Length of decodedWords should be {} but is: {}".format(BATCH_SIZE, len(decodedWords))
+    print("Sanity Check Passed for Question 2d: CharDecoder.decode_greedy()!")
+    print("-"*80)
 
 def main():
     """ Main func.
@@ -202,16 +206,7 @@ def main():
     torch.cuda.manual_seed(seed)
     np.random.seed(seed * 13 // 7)
 
-    # Load training data & vocabulary
-    train_data_src = read_corpus('./sanity_check_en_es_data/train_sanity_check.es', 'src')
-    train_data_tgt = read_corpus('./sanity_check_en_es_data/train_sanity_check.en', 'tgt')
-    train_data = list(zip(train_data_src, train_data_tgt))
-
-    for src_sents, tgt_sents in batch_iter(train_data, batch_size=BATCH_SIZE, shuffle=True):
-        src_sents = src_sents
-        tgt_sents = tgt_sents
-        break
-    vocab = Vocab.load('./sanity_check_en_es_data/vocab_sanity_check.json') 
+    vocab = Vocab.load('./sanity_check_en_es_data/vocab_sanity_check.json')
 
     # Create NMT Model
     model = NMT(
@@ -220,17 +215,33 @@ def main():
         dropout_rate=DROPOUT_RATE,
         vocab=vocab)
 
-    if args['1d']:
-        question_1d_sanity_check(model, src_sents, tgt_sents, vocab)
-    elif args['1e']:
-        question_1e_sanity_check(model, src_sents, tgt_sents, vocab)
+    char_vocab = DummyVocab()
+
+    # Initialize CharDecoder
+    decoder = CharDecoder(
+        hidden_size=HIDDEN_SIZE,
+        char_embedding_size=EMBED_SIZE,
+        target_vocab=char_vocab)
+
+    if args['1e']:
+        question_1e_sanity_check()
     elif args['1f']:
-       # generate_outputs(model, src_sents, tgt_sents, vocab)
-        question_1f_sanity_check(model, src_sents, tgt_sents, vocab)
+        question_1f_sanity_check()
+    elif args['1j']:
+        question_1j_sanity_check(model)
+    elif args['2a']:
+        question_2a_sanity_check(decoder, char_vocab)
+    elif args['2b']:
+        question_2b_sanity_check(decoder, char_vocab)
+    elif args['2c']:
+        question_2c_sanity_check(decoder)
+    elif args['2d']:
+        question_2d_sanity_check(decoder)
+    elif args['1h']:
+        question_1h_sanity_check()
     else:
         raise RuntimeError('invalid run mode')
 
 
 if __name__ == '__main__':
     main()
-    
