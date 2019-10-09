@@ -45,7 +45,7 @@ import math
 import sys
 import pickle
 import time
-
+import os
 
 from docopt import docopt
 from nltk.translate.bleu_score import corpus_bleu, sentence_bleu, SmoothingFunction
@@ -140,7 +140,7 @@ def train(args: Dict):
     vocab_mask = torch.ones(len(vocab.tgt))
     vocab_mask[vocab.tgt['<pad>']] = 0
 
-    device = torch.device("cuda:0" if args['--cuda'] else "cpu")
+    device = torch.device(0 if args['--cuda'] else "cpu")
     print('use device: %s' % device, file=sys.stderr)
 
     model = model.to(device)
@@ -277,7 +277,7 @@ def decode(args: Dict[str, str]):
     model = NMT.load(args['MODEL_PATH'], no_char_decoder=args['--no-char-decoder'])
 
     if args['--cuda']:
-        model = model.to(torch.device("cuda:0"))
+        model = model.to(torch.device(0))
 
     hypotheses = beam_search(model, test_data_src,
                              beam_size=int(args['--beam-size']),

@@ -103,10 +103,10 @@ class CharDecoder(nn.Module):
         ###      - We use curly brackets as start-of-word and end-of-word characters. That is, use the character '{' for <START> and '}' for <END>.
         ###        Their indices are self.target_vocab.start_of_word and self.target_vocab.end_of_word, respectively.
         batch_size=initialStates[0].size()[1]
-        current_input=self.decoderCharEmb(torch.tensor([self.target_vocab.start_of_word]*batch_size).reshape(1,batch_size))
+        current_input=self.decoderCharEmb(torch.tensor([self.target_vocab.start_of_word]*batch_size,device=device).reshape(1,batch_size))
         
         s_t=None
-        totalWord=torch.empty(1,batch_size,0,dtype=torch.long)
+        totalWord=torch.empty(1,batch_size,0,dtype=torch.long,device=device)
         for i in range(0,max_length):
             output,initialStates=self.charDecoder(current_input,initialStates)
             s_t=self.char_output_projection(output)
